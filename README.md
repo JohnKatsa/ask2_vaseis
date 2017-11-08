@@ -1,2 +1,2 @@
 # ask2_vaseis
-Άσκηση 2 ΥΣΒΔ Giannis Katsani-Nikos Koutsovasilis
+Άσκηση 2 ΥΣΒΔ Giannis Katsanis-Nikos Koutsovasilis
