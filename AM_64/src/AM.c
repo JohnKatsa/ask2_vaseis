@@ -1,5 +1,6 @@
 #include "AM.h"
 #include "structs.h"
+#include <string.h>
 
 struct scan Scans[20];
 struct openedFiles OpenFiles[20];
