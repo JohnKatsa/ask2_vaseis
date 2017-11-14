@@ -1,0 +1,50 @@
+
+B+ Tree Insert Algorithm, with degree = d
+
+InsertAlgorithm(nodepointer N , entry k, newchild C)	// new child used for recursion in split mode (initially NULL)
+
+	if( N is an index node  )		// index nodes
+
+		i : K[i] <= k < K[i+1]		// K[] index keys in node
+		InsertAlgorithm(P[i],k,C)	// P[] index pointers in node  -- P = K+1 entries
+
+		if( C == NULL )			// When tree is splited till the root ends
+			return 
+
+		else 				// split the index node because there is C that comes from child
+
+			if( N != Empty )		// if there is free space in N
+
+				i: K[i] <= k < K[i+1]	// Find where the pointer key should go 
+				P[i+1] = C		// put the pointer (i keys , i+1 pointers)
+				C = NULL
+				return
+
+			else
+
+				split N:	// 2d+1 keys, 2d+2 pointers
+					First d keys and d+1 pointers don't change
+					Last d keys and d+1 pointers move to N2 	// N2 = new allocated node 
+					C = (smallest key in N2, pointer of N2)		// newchild = struct(key,pointer)
+				
+				if( N == ROOT  )	// split root
+
+					new node = (N,C)	// create new node with pointer N and struct C
+					ROOT = new node
+
+	else		// leaf node
+
+		if( N != Empty )
+
+			i : K[i] <= k < K[i+1]
+			K[i] = k		// put entry directly if free space
+
+		else
+
+			split N:	// Same as spliting index nodes
+				First d entries stay
+				Last d+1 entris move to N2
+				C = (smallest key in N2, pointer to N2)	// make their parent
+				Link N and N2				// sibling linkage
+					
+end InsertAlgorithm
