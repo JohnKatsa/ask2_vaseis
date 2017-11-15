@@ -122,11 +122,17 @@ void *AM_FindNextEntry(int scanDesc) {
 
 
 int AM_CloseIndexScan(int scanDesc) {
+	free(Scans[scanDesc]);
+	Scans[scanDesc]=NULL;
 	return AME_OK;
 }
 
 
 void AM_PrintError(char *errString) {
+	printf("%s\n",errString);	/* Hash table for errors must be implemented */
+	char str[20] = hash(AM_errno);
+	printf("%s\n",str);
+
 
 }
 
