@@ -192,7 +192,7 @@ int AM_InsertEntry(int fileDesc, void *value1, void *value2) {
 
 			offset += sizeof(char) + sizeof(int) + sizeof(int);	// key 1	// =============== what?? =============== //
 			memcpy(&temp,&data[offset],l1);				// key in block (loop invariant)
-			while((&data[offset] - &data[0]) < BF_BLOCK_SIZE)       // while in block
+			while((&data[offset] - &data[0]) < BF_BLOCK_SIZE) {      // while in block // ===== offset < size ========== //
 				if(tempc != 'k' )
 					break;
 				if(cmp(t1,l1,value1,&temp) == -1){
@@ -209,6 +209,7 @@ int AM_InsertEntry(int fileDesc, void *value1, void *value2) {
 					offset += 2*sizeof(int);	// distance between 2 keys
 					memcpy(&temp,&data[offset],sizeof(int));
 				}
+			}
 		}
 
 	}
@@ -218,11 +219,62 @@ int AM_InsertEntry(int fileDesc, void *value1, void *value2) {
 
 
 int AM_OpenIndexScan(int fileDesc, int op, void *value) {
+	scan *s = malloc(sizeof(scan));
+	s->fileDesc = fileDesc;
+       	s->op = op;
+	s->value = value;
+	s->offset = 0;
+
+	BF_Block *block;
+	BF_GetBlock(fileDesc,0,block);
+	char *data = BF_Block_GetData(block);
+	int index = strlen("B+Tree")+1+2*sizeof(char) + 2*sizeof(int);
+	int root;
+	memcpy(&root,&data[index],sizeof(int));
+	BF_GetBlock(fileDesc,root,block);
+	data = BF_Block_GetData(block);
+	char index;
+	memcpy(&index,data,sizeof(char));
+	int offset = sizeof(char);
+	int seq = 1;
+	while(1){
+		if(offset + sizeof(int)  <= BF_BLOCK_SIZE){	// correct condition?
+			offset += sizeof(int); // ignore block_pointer and get the key
+			int key;
+			memcpy(&key,&data[offset],sizeof(int)); // CASES!!
+			if(operation(op,key,*(int*)value) ) {
+				if(index == 'k'){
+					offset -= sizeof(int);	// go back to block_pointer
+					memcpy(&root,data[offset],sizeof(int));
+					BF_GetBlock(fileDesc,root,block);
+					data = BF_Block_GetData(block);
+					memcpy(&index,data,sizeof(char));
+					offset = sizeof(char);
+					seq = 1;
+					continue;
+				}
+				else {
+					s->blockNum = root;
+					s->offset = seq;
+					break;
+				}
+			}
+			else {
+				offset+=sizeof(int);
+				seq++;
+			}
+
+		}
+		else return -1;
+	}
+
+
 	return AME_OK;
 }
 
 
 void *AM_FindNextEntry(int scanDesc) {
+	
 
 }
 
