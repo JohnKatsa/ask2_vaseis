@@ -7,6 +7,9 @@ struct openedFiles *OpenFiles[20];
 
 int AM_errno = AME_OK;
 
+int sizeofr;	// size of record
+int sizeofb;	// number of entries the block can keep
+
 void AM_Init() {
 	BF_Init(LRU);
 	return;
@@ -42,6 +45,9 @@ int AM_CreateIndex(char *fileName,
 
 	memcpy(&(data[offset]),&attrLength2,sizeof(int));
 	offset += sizeof(int);
+
+	sizeofr = attrLength1 + attrLength2;
+	sizeofb = (BF_BLOCK_SIZE - sizeof(char) - 2*sizeof(int))/sizeofr;
 
 	/* All four fields written on block 0 */
 
@@ -106,7 +112,107 @@ int AM_CloseIndex (int fileDesc) {
 }
 
 
+int cmp(char t1, int l1, void* value1, void* temp)
+{
+	int n;
+	if(t1 == 'c'){
+		n = strncmp(value1,temp,l1);
+		return n;
+	}
+	else{
+		n = (*(int)(value1) < *(int)(temp));
+		//n = 10;
+		if(n == 1)
+			return -1;
+	}
+	return n;
+}
+
 int AM_InsertEntry(int fileDesc, void *value1, void *value2) {
+
+	int blocks_num, offset, temp;
+	BF_Block *block;
+	BF_Block_Init(&block);
+	BF_GetBlock(fileDesc, 0, block);
+	char *data = BF_Block_GetData(block);
+
+	int l1, l2;				// length of 1 & 2
+	char t1, t2;				// type of 1 & 2
+	offset = strlen("B+Tree")+1;
+
+	memcpy(&t1,&data,sizeof(char));
+	offset += sizeof(char);
+
+	memcpy(&l1,&data[offset],sizeof(int));
+	offset += sizeof(int);
+
+	memcpy(&t2,&data[offset],sizeof(char));
+	offset += sizeof(char);
+
+	memcpy(&l2,&data[offset],sizeof(int));	
+	offset += sizeof(int);
+	
+	if(BF_GetBlockCounter(fileDesc,&blocks_num) == 1){
+
+		memcpy(&data[offset],&blocks_num,sizeof(int));  // pointer to root
+
+		int offset = 0, temp;
+		BF_AllocateBlock(fileDesc,block);		// make a data block
+		data = BF_Block_GetData(block);			//
+
+		memset(&data[offset],'d',sizeof(char));		//
+		offset += sizeof(char);				// making of data block
+
+		temp = 1;					// one record
+		memcpy(&data[offset],&temp,sizeof(int));	// directly take one for the new record
+		offset += sizeof(int);
+
+		temp = 0;					//
+		memcpy(&data[offset],&temp,sizeof(int));	// 0 means no sibling
+		offset += sizeof(int);
+
+		memcpy(&data[offset],value1,l1);		// pass value 1
+		offset += l1;
+		memcpy(&data[offset],value2,l2);		// pass value 2
+
+		return AME_OK;
+	}
+	else{	// exists root
+		int temp;
+		char tempc;
+
+		memcpy(&temp,&data[offset],sizeof(int));	// see where is the root
+		BF_GetBlock(fileDesc,temp,block);		// take the root block
+		data = BF_Block_GetData(block);
+
+		offset = 0;
+
+		memcpy(&tempc,&data[offset],sizeof(char));		// (k)ey or (d)ata
+		while( tempc == 'k' ){	// index node
+
+			offset += sizeof(char) + sizeof(int) + sizeof(int);	// key 1
+			memcpy(&temp,&data[offset],l1);				// key in block (loop invariant)
+			while((&data[offset] - &data[0]) < BF_BLOCK_SIZE)       // while in block
+				if(tempc != 'k' )
+					break;
+				if(cmp(t1,l1,value1,&temp) == -1){
+					memcpy(&temp,&data[offset - sizeof(int)],sizeof(int));	// find where should go
+					BF_GetBlock(fileDesc,temp,block);			// take the right block
+					data = BF_Block_GetData(block);
+					memcpy(&tempc,data,sizeof(char));
+					offset = sizeof(char) + 2*sizeof(int);			// start of new block
+					memcpy(&temp,&data[offset],sizeof(int));
+					continue;
+					//	go to this node
+				}
+				else{
+					offset += 2*sizeof(int);	// distance between 2 keys
+					memcpy(&temp,&data[offset],sizeof(int));
+				}
+		}
+
+	}
+
 	return AME_OK;
 }
 
