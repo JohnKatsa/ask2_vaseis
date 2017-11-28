@@ -120,7 +120,7 @@ int cmp(char t1, int l1, void* value1, void* temp)
 		return n;
 	}
 	else{
-		n = (*(int)(value1) < *(int)(temp));
+		n = (*(int*)(value1) < *(int*)(temp));
 		//n = 10;
 		if(n == 1)
 			return -1;
@@ -139,8 +139,8 @@ int AM_InsertEntry(int fileDesc, void *value1, void *value2) {
 	int l1, l2;				// length of 1 & 2
 	char t1, t2;				// type of 1 & 2
 	offset = strlen("B+Tree")+1;
-
-	memcpy(&t1,&data,sizeof(char));
+	
+	memcpy(&t1,&data,sizeof(char));	// ================  nomizw 8elei &data[offset] ki edw ==================
 	offset += sizeof(char);
 
 	memcpy(&l1,&data[offset],sizeof(int));
@@ -152,9 +152,9 @@ int AM_InsertEntry(int fileDesc, void *value1, void *value2) {
 	memcpy(&l2,&data[offset],sizeof(int));	
 	offset += sizeof(int);
 	
-	if(BF_GetBlockCounter(fileDesc,&blocks_num) == 1){
+	if(BF_GetBlockCounter(fileDesc,&blocks_num) == 1){	// ====== BF_GetBlockCounter epistrefei BF_OK an 8ymamai kala. prepei na baloyme to blocks_num gia sygkrish =======
 
-		memcpy(&data[offset],&blocks_num,sizeof(int));  // pointer to root
+		memcpy(&data[offset],&blocks_num,sizeof(int));  // pointer to root //	=========== what ?? ========== //
 
 		int offset = 0, temp;
 		BF_AllocateBlock(fileDesc,block);		// make a data block
@@ -190,7 +190,7 @@ int AM_InsertEntry(int fileDesc, void *value1, void *value2) {
 		memcpy(&tempc,&data[offset],sizeof(char));		// (k)ey or (d)ata
 		while( tempc == 'k' ){	// index node
 
-			offset += sizeof(char) + sizeof(int) + sizeof(int);	// key 1
+			offset += sizeof(char) + sizeof(int) + sizeof(int);	// key 1	// =============== what?? =============== //
 			memcpy(&temp,&data[offset],l1);				// key in block (loop invariant)
 			while((&data[offset] - &data[0]) < BF_BLOCK_SIZE)       // while in block
 				if(tempc != 'k' )
@@ -236,8 +236,8 @@ int AM_CloseIndexScan(int scanDesc) {
 
 void AM_PrintError(char *errString) {
 	printf("%s\n",errString);	/* Hash table for errors must be implemented */
-	char str[20] = hash(AM_errno);
-	printf("%s\n",str);
+	//char str[20] = hash(AM_errno);
+	//printf("%s\n",str);
 
 
 }
