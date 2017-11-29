@@ -7,8 +7,21 @@ struct openedFiles *OpenFiles[20];
 
 int AM_errno = AME_OK;
 
+int root = 0, realroot;		// root of tree to recurse, real root to be stable on the root
+
+struct newc{			//
+	int block_number;	//
+	int key;		//
+} newchild;			// newchildpointer, which is a (block number,key)
+newchild.block_number = 0;	//
+newchild.key = 0;		//
+
+int l1, l2;             // length of value1 & value2
+char t1, t2;            // type of value1 & value2
+
 int sizeofr;	// size of record
-int sizeofb;	// number of entries the block can keep
+int sizeofdb;	// number of entries the data block can keep
+int sizeofib;	// number of entries the index block can keep
 
 void AM_Init() {
 	BF_Init(LRU);
@@ -47,7 +60,8 @@ int AM_CreateIndex(char *fileName,
 	offset += sizeof(int);
 
 	sizeofr = attrLength1 + attrLength2;
-	sizeofb = (BF_BLOCK_SIZE - sizeof(char) - 2*sizeof(int))/sizeofr;
+	sizeofdb = (BF_BLOCK_SIZE - sizeof(char) - 2*sizeof(int))/sizeofr;
+	sizeofib = sizeofdb - 1;			// ?
 
 	/* All four fields written on block 0 */
 
@@ -128,8 +142,76 @@ int cmp(char t1, int l1, void* value1, void* temp)
 	return n;
 }
 
-int AM_InsertEntry(int fileDesc, void *value1, void *value2) {
+int initialize(int fileDesc, void *value1, void *value2)	// returns root, or also allocates block if tree == NULL
+{
+	int blocks_num, offset, temp;
+        BF_Block *block;
+        BF_Block_Init(&block);
+        BF_GetBlock(fileDesc, 0, block);
+        char *data = BF_Block_GetData(block);
 
+	int root;				// block number of root node
+        offset = strlen("B+Tree")+1;
+        
+        memcpy(&t1,&data[offset],sizeof(char)); 
+        offset += sizeof(char);
+
+        memcpy(&l1,&data[offset],sizeof(int));
+        offset += sizeof(int);
+
+        memcpy(&t2,&data[offset],sizeof(char));
+        offset += sizeof(char);
+
+        memcpy(&l2,&data[offset],sizeof(int));  
+        offset += sizeof(int);
+        
+        BF_GetBlockCounter(fileDesc,&blocks_num);
+
+	if(blocks_num == 1){
+
+		int mem = 1;
+                memcpy(&data[offset],&mem,sizeof(int));  // pointer to root
+
+                int offset = 0, temp;
+                BF_AllocateBlock(fileDesc,block);               // make a data block
+                data = BF_Block_GetData(block);                 //
+
+                memset(&data[offset],'d',sizeof(char));         //
+                offset += sizeof(char);                         // making of data block
+
+                temp = 1;                                       // one record
+                memcpy(&data[offset],&temp,sizeof(int));        // directly take one for the new record
+                offset += sizeof(int);
+
+                temp = 0;                                       //
+                memcpy(&data[offset],&temp,sizeof(int));        // 0 means no sibling
+                offset += sizeof(int);
+
+                memcpy(&data[offset],value1,l1);                // pass value 1
+                offset += l1;
+                memcpy(&data[offset],value2,l2);                // pass value 2
+		root = 1;
+		BF_UnpinBlock(block);
+	}
+	else
+		memcpy(&root,&data[offset],sizeof(int));
+
+	return root;
+}
+
+void insert_index(struct newc newchild){
+	return;
+}
+
+struct newc split_index(int root){	//unimplemented
+	struct newc temp;
+	temp.block_number = 0;
+	temp.key = 0;
+	return temp;
+}
+
+int AM_InsertEntry(int fileDesc, void *value1, void *value2) {
+/*
 	int blocks_num, offset, temp;
 	BF_Block *block;
 	BF_Block_Init(&block);
@@ -140,7 +222,7 @@ int AM_InsertEntry(int fileDesc, void *value1, void *value2) {
 	char t1, t2;				// type of 1 & 2
 	offset = strlen("B+Tree")+1;
 	
-	memcpy(&t1,&data,sizeof(char));	// ================  nomizw 8elei &data[offset] ki edw ==================
+	memcpy(&t1,&data[offset],sizeof(char));	// ================  nomizw 8elei &data[offset] ki edw ==================
 	offset += sizeof(char);
 
 	memcpy(&l1,&data[offset],sizeof(int));
@@ -152,9 +234,10 @@ int AM_InsertEntry(int fileDesc, void *value1, void *value2) {
 	memcpy(&l2,&data[offset],sizeof(int));	
 	offset += sizeof(int);
 	
-	if(BF_GetBlockCounter(fileDesc,&blocks_num) == 1){	// ====== BF_GetBlockCounter epistrefei BF_OK an 8ymamai kala. prepei na baloyme to blocks_num gia sygkrish =======
+	BF_GetBlockCounter(fileDesc,&blocks_num)
+	if(blocks_num == 1)	// ====== BF_GetBlockCounter epistrefei BF_OK an 8ymamai kala. prepei na baloyme to blocks_num gia sygkrish =======
 
-		memcpy(&data[offset],&blocks_num,sizeof(int));  // pointer to root //	=========== what ?? ========== //
+		memcpy(&data[offset],1,sizeof(int));  // pointer to root //	=========== what ?? ========== //
 
 		int offset = 0, temp;
 		BF_AllocateBlock(fileDesc,block);		// make a data block
@@ -192,7 +275,7 @@ int AM_InsertEntry(int fileDesc, void *value1, void *value2) {
 
 			offset += sizeof(char) + sizeof(int) + sizeof(int);	// key 1	// =============== what?? =============== //
 			memcpy(&temp,&data[offset],l1);				// key in block (loop invariant)
-			while((&data[offset] - &data[0]) < BF_BLOCK_SIZE)       // while in block
+			while(offset < BF_BLOCK_SIZE){       // while in block
 				if(tempc != 'k' )
 					break;
 				if(cmp(t1,l1,value1,&temp) == -1){
@@ -209,9 +292,105 @@ int AM_InsertEntry(int fileDesc, void *value1, void *value2) {
 					offset += 2*sizeof(int);	// distance between 2 keys
 					memcpy(&temp,&data[offset],sizeof(int));
 				}
+			}
 		}
+		
 
 	}
+*/
+
+
+	if(root == 0){						// in order not to fall in loop
+		root = initialize(fileDesc,value1,value2);	// call of initialize to get root
+		realroot = root;				// need to keep known the real root, not only the iterator on recursion
+	}
+
+	BF_Block *block;
+        BF_Block_Init(&block);
+
+	void *tmp;	// temporary data
+	char type;	// k of d
+	int offset = 0, temp;
+	BF_GetBlock(fileDesc, root, block);
+	char* data = BF_Block_GetData(block);
+	memcpy(&type,&data[offset],sizeof(char));
+
+	offset += sizeof(char) + 2*sizeof(int);		// first
+	memcpy(tmp,&data[offset],l1);			// key
+	if(type == 'c'){
+
+		while(offset < sizeofdb){       		// while in block (look CreateIndex)
+			if(cmp(t1,l1,value1,tmp) == -1){
+				memcpy(&temp,&data[offset - sizeof(int)],sizeof(int));    // find where should go
+				break;
+                        	//BF_GetBlock(fileDesc,temp,block);                       // take the right block
+                        	//data = BF_Block_GetData(block);
+                        	//memcpy(&type,data,sizeof(char));
+                        	//offset = sizeof(char) + 2*sizeof(int);                  // start of new block
+                        	//memcpy(&temp,&data[offset],sizeof(int));
+
+                        	//      go to this node
+			
+                	}
+                	else{
+                	        offset += 2*sizeof(int);        // distance between 2 keys
+                	        memcpy(&temp,&data[offset],sizeof(int));
+                	}
+		}
+		root = temp;				  // change 'root' for recursion
+		AM_InsertEntry(fileDesc,value1,value2);
+	}
+//////////////////////////////////////
+	if(newchild.block_number == 0)		// if newchild is NULL
+		return 0;
+	else{
+		int space;
+		memcpy(&space,&data[sizeof(char)],sizeof(char));	// take the entries that the index block has know
+
+		if(space < sizeofib){	// if it has open position for another index key
+			insert_index(newchild);
+			newchild.block_number = 0;
+			newchild.key = 0;
+			return 0;
+		}
+
+		else{
+			newchild = split_index(root);	// root = block number of index block to split, returns lowest key of right child (newly allocated)
+
+			if(root == realroot){		// if block is the real root
+				BF_AllocateBlock(fileDesc,block);
+				data = BF_Block_GetData(block);
+
+				offset = 0;
+				memset(&data[offset],'k',sizeof(char));		// set k in index block
+
+				offset += sizeof(char);
+				int mem = 1;	
+				memcpy(&data[offset],&mem,sizeof(int));		// set plithos eggrafwn = 1;
+
+				offset += sizeof(int);
+				mem = newchild.block_number;
+				memcpy(&data[offset],&mem,sizeof(int));		// cpy block number 
+
+				offset += sizeof(int);
+				mem = newchild.key;
+				memcpy(&data[offset],&mem,sizeof(int));		// cpy key
+
+				// make the tree's root node pointer poin to the new node	//
+				BF_GetBlock(fileDesc,0,block);					//
+				data = BF_Block_GetData(block);					//
+
+
+				int blocks_num;							//
+				BF_GetBlockCounter(fileDesc,&blocks_num);			//
+
+				offset = sizeof("B+Tree")+1 + 2*sizeof(char) + 2*sizeof(int);	//
+				blocks_num -= 1;						//
+				memcpy(&data[offset],&blocks_num,sizeof(int));			//	
+			}
+		}	
+	}
+
 
 	return AME_OK;
 }
