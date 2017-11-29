@@ -4,8 +4,12 @@
 struct scan {
 	int fileDesc;
 	int blockNum;
-	int recordNum;
+	int offset;
+	int op;
+	void *value;
 };
+
+typedef struct scan Scan;
 
 struct openedFiles {
 	char *fileName;
