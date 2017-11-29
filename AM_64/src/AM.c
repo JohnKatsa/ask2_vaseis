@@ -13,8 +13,6 @@ struct newc{			//
 	int block_number;	//
 	int key;		//
 } newchild;			// newchildpointer, which is a (block number,key)
-newchild.block_number = 0;	//
-newchild.key = 0;		//
 
 int l1, l2;             // length of value1 & value2
 char t1, t2;            // type of value1 & value2
@@ -210,6 +208,18 @@ struct newc split_index(int root){	//unimplemented
 	return temp;
 }
 
+void insert_entry(int root,int value1,int value2){
+	// put value 1 and value 2 in the block
+	return;
+}
+
+struct newc split_data(int root){	//unimplemented
+	struct newc temp;
+	temp.block_number = 0;
+	temp.key = 0;
+	return temp;
+}
+
 int AM_InsertEntry(int fileDesc, void *value1, void *value2) {
 /*
 	int blocks_num, offset, temp;
@@ -349,13 +359,13 @@ int AM_InsertEntry(int fileDesc, void *value1, void *value2) {
 		return 0;
 	else{
 		int space;
-		memcpy(&space,&data[sizeof(char)],sizeof(char));	// take the entries that the index block has know
+		memcpy(&space,&data[sizeof(char)],sizeof(int));	// take the entries that the index block has know
 
-		if(space < sizeofib){	// if it has open position for another index key
+		if(space+1 < sizeofib){	// if it has open position for another index key
 			insert_index(newchild);
 			newchild.block_number = 0;
 			newchild.key = 0;
-			return 0;
+			return AME_OK;
 		}
 
 		else{
@@ -395,6 +405,25 @@ int AM_InsertEntry(int fileDesc, void *value1, void *value2) {
 		}	
 	}
 
+	if(type == 'd'){	// if we are in leaf node
+
+		int space;
+		memcpy(&space,&data[sizeof(char)],sizeof(int));	// take the entries that the data block has know
+
+		if(space+1 < sizeofdb){	// if it has open position for another data entry
+			insert_entry(root,value1,value2);		// put entry into block 'root'
+			newchild.block_number = 0;
+			newchild.key = 0;
+			return AME_OK;
+		}
+		else{
+			newchild = split_data(root);
+
+			data = BF_Block_GetData(block);
+			offset = sizeof(char) + sizeof(int);				// aderfi
+			memcpy(&data[offset],&(newchild.block_number),sizeof(int));	// set siblings the splitted nodes
+			return AME_OK;
+	}
 
 	return AME_OK;
 }
