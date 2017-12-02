@@ -282,6 +282,24 @@ int getRoot(int fileDesc){
 				if(type == 'i') return *(int*)value1 != *(int*)value2;
 				else if(type == 'f') return *(float*)value1 != *(float*)value2;
 				else return strncmp(value1,value2,l1);
+			case 3:
+                                if(type == 'i') return *(int*)value1 < *(int*)value2;
+                                else if(type == 'f') return *(float*)value1 < *(float*)value2;
+                                else return strncmp(value1,value2,l1) < 0;
+                                break;
+                        case 4:
+                                if(type == 'i') return *(int*)value1 > *(int*)value2;
+                                else if(type == 'f') return *(float*)value1 > *(float*)value2;
+                                else return strncmp(value1,value2,l1) > 0;
+			case 5:
+				if(type == 'i') return *(int*)value1 <= *(int*)value2;
+				else if(type == 'f') return *(float*)value1 <= *(float*)value2;
+				else return strncmp(value1,value2,l1) <= 0;
+				break;
+			case 6:
+				if(type == 'i') return *(int*)value1 >= *(int*)value2;
+				else if(type == 'f') return *(float*)value1 >= *(float*)value2;
+				else return strncmp(value1,value2,l1) >= 0;
 		}
 	}	
 	int AM_OpenIndexScan(int fileDesc, int op, void *value) {
