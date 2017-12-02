@@ -2,6 +2,7 @@
 #include "structs.h"
 #include <string.h>
 #include "bf.h"
+#include "StackInterface.h"
 struct scan *Scans[20];
 struct openedFiles *OpenFiles[20];
 
@@ -104,10 +105,22 @@ int AM_OpenIndex (char *fileName) {
 
 
 int AM_CloseIndex (int fileDesc) {
-	if(1){  // if no scans running
-		free(OpenFiles[fileDesc]);
-		OpenFiles[fileDesc] = NULL;
-		return AME_OK;
+	for(int i=0;i<20;i++){
+		if(OpenFiles[i] != NULL){
+			if(OpenFiles[i]->fileDesc == fileDesc) break;
+		}
+	}
+	if(i>=20){  // if no scans running
+		for(int j=0;j<20;j++){
+			if(OpenFiles[j] != NULL){
+				if(OpenFiles[j]->fileDesc == fileDesc){
+					free(OpenFiles[j]);
+					OpenFiles[j] = NULL;
+					return AME_OK;
+				}
+			}
+		}
+//		return AME_OK;
 	}
 }
 
@@ -279,6 +292,7 @@ int getRoot(int fileDesc){
 		s->offset = 0;
 
 		BF_Block *block;
+		BF_Block_Init(&block);
 		BF_GetBlock(fileDesc,0,block);
 		char *data = BF_Block_GetData(block);
 		int index2 = strlen("B+Tree")+1+2*sizeof(char) + 2*sizeof(int);
@@ -290,12 +304,14 @@ int getRoot(int fileDesc){
 		memcpy(&index,data,sizeof(char));
 		int offset = sizeof(char);
 		int seq = 0;
+		int l1 = get_l1():
+		char t1 = get_t1();
 		while(1){
 			if(offset + sizeof(int)  <= BF_BLOCK_SIZE){	// correct condition?
 				offset += sizeof(int); // ignore block_pointer and get the key
 				int key;
-				memcpy(&key,&data[offset],sizeof(int)); // CASES!!
-				if(operation(op,key,*(int*)value) ) {
+				memcpy(&key,&data[offset],l1); // CASES!!
+				if(operation(op,t1,key,value) ) {
 					if(index == 'k'){
 						offset -= sizeof(int);	// go back to block_pointer
 						memcpy(&root,&data[offset],sizeof(int));
@@ -313,7 +329,7 @@ int getRoot(int fileDesc){
 					}
 				}
 				else {
-					offset+=sizeof(int);
+					offset += l1;
 					seq++;
 				}
 
@@ -330,13 +346,27 @@ int getRoot(int fileDesc){
 
 
 	void *AM_FindNextEntry(int scanDesc) {
-		Scan *s = Scans[scanDesc];
+		Scan *s;// = Scans[scanDesc];
+		for(int i=0;i<20;i++)
+			if(Scans[i] != NULL)
+				if(Scans[i]->scanDesc == scanDesc)
+					s = Scans[i];
+
 		BF_Block *block;
 		BF_GetBlock(s->fileDesc,s->blockNum,block);
 		char *data = BF_Block_GetData(block);
 
-		if(operation(s->op,&data[s->offset*sizeof(int)],s->value)){
-			s->offset++;
+		int offset = sizeof(char) + sizeof(int)*2 + s->offset*(get_l1(s->fileDesc)+get_l2(s->fileDesc));
+
+		if(operation(s->op,get_t1(s->fileDesc),&data[offset],s->value)){	// na ftia3w to offset 
+			if(s->offset < getKeysNumber(s->fileDesc,s->blockNum)){
+				s->offset++;
+			}
+			else {
+				s->offset = 0;
+				s->blockNum = getRightSibling(s->fileDesc,s->blockNum);
+			}
+
 			return &data[s->offset*sizeof(int)];
 		}
 		return NULL;
@@ -346,8 +376,14 @@ int getRoot(int fileDesc){
 
 
 	int AM_CloseIndexScan(int scanDesc) {
-		free(Scans[scanDesc]);
-		Scans[scanDesc]=NULL;
+		for(int i=0;i<20;i++){
+			if(Scans[i] != NULL){
+				if(Scans[i]->scanDesc == scanDesc){
+					free(Scans[i]);
+					Scans[i]=NULL;
+				}
+			}
+		}
 		return AME_OK;
 	}
 
