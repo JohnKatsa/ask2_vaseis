@@ -85,28 +85,28 @@ void AM_InsertEntry(int fileDesc, void *value1, void *value2){
 				else offset += sizeof(int) + l1;
 			}
 			if(type == 'd'){
-				if(getKeysNumber(temp) < MAXKEYS) { 	//def MAXKEYS
-					offset = sizeof(char) + sizeof(int) + getKeysNumber(temp)*(l1+l2) ;
+				if(getKeysNumber(fileDesc,temp) < MAXKEYS) { 	//def MAXKEYS
+					offset = sizeof(char) + sizeof(int) + getKeysNumber(fileDesc,temp)*(l1+l2) ;
 					memcpy(&data[offset],value1,l1);
 					offset += l1;
 					memcpy(&data[offset],value2,l2);
 					offset += l2;
 
-					i = getKeysNumber(temp);
+					i = getKeysNumber(fileDesc,temp);
 					i++;
 					// create insert_and_sort() 
 					memcpy(&data[sizeof(char)],&i,sizeof(int));	// increase keysnumber
 				}
 				else {
 					stack.push(temp);
-					split(stack,value1,value2);
+					split(fileDesc,stack,value1,value2);
 				}
 			}
 		}
 	}
 
 
-void split(Stack stack, void* value1,void* value2){
+void split(int fileDesc,Stack stack, void* value1,void* value2){
 	int current = stack.pop();
 	BF_GetBlock(fileDesc, current, block);
 	char* data = BF_Block_GetData(block);
@@ -129,12 +129,12 @@ void split(Stack stack, void* value1,void* value2){
 	int flag = 0;
 	void key,value,tempkey,tempvalue;
 
-	for(i=0;i<=(getKeysNumber(current)-1)/2;i++)	{	// ================   condition?? =================
+	for(i=0;i<=(getKeysNumber(fileDesc,current)-1)/2;i++)	{	// ================   condition?? =================
 		memcpy(&key,&data[offset],l1);
 		offset += l1;
 		memcpy(&value,&data[offset],l2);
 		offset += l2;
-		if(cmp(....)){	// swap(t1,t2,l1,l2,value1,value2);
+		if(cmp(t1,l1,value1,&key)){	// swap(t1,t2,l1,l2,value1,value2);
 			offset = offset - (l1 + l2);
 			flag = 1;
 			memcpy(&tempkey,&data[offset],l1);
@@ -150,7 +150,7 @@ void split(Stack stack, void* value1,void* value2){
 			memcpy(&key,&tempkey,l1);
 			memcpy(&value,&tempvalue,l2);
 
-			for(int j=i;j<=(getKeysNumber(current)-1)/2;j++){
+			for(int j=i;j<=(getKeysNumber(fileDesc,current)-1)/2;j++){
 				memcpy(&tempkey,&data[offset],l1);
 				offset += l1;
 				memcpy(&tempvalue,&data[offset],l2);
@@ -167,7 +167,7 @@ void split(Stack stack, void* value1,void* value2){
 			break;
 		}
 	}
-	setKeysNumber(current,i);
+	setKeysNumber(fileDesc,current,i);
 
 	int offset1 = offset;
 	
@@ -180,11 +180,11 @@ void split(Stack stack, void* value1,void* value2){
 	memcpy(data2,type,sizeof(char));
 	offset = sizeof(char);
 
-	int number = getKeysNumber(current)/2;
+	int number = getKeysNumber(fileDesc,current)/2;
 	memcpy(&data2[offset],&number,sizeof(int));
 	offset += sizeof(int);
 	if(type == 'd'){	
-	number = getRightSibling(current);
+	number = getRightSibling(fileDesc,current);
 	
 	memcpy(&data2[offset],&number,sizeof(int));
 	offset += sizeof(int);
@@ -199,8 +199,8 @@ void split(Stack stack, void* value1,void* value2){
 	offset += l2;
 	}
 
-	for(i=(getKeysNumber(current)+1)/2;i<getKeysNumber(current);i++){  
-		if(flag == 0 && cmp(...)){
+	for(i=(getKeysNumber(fileDesc,current)+1)/2;i<getKeysNumber(fileDesc,current);i++){  
+		if(flag == 0 && cmp(t1,l1,value1,&data[offset1])){		// is it offset1? ====================
 			memcpy(&data[offset],value1,l1);
 			offset += l1;
 			memcpy(&data[offset],value2,l2);
@@ -216,7 +216,7 @@ void split(Stack stack, void* value1,void* value2){
 		offset += l2;
 		offset1 += l2;
 	}
-	if(current == getRoot()) {
+	if(current == getRoot(fileDesc)) {
 		BF_AllocateBlock(block);
 		data = BF_Block_GetData(block);
 		type = 'k';
@@ -237,11 +237,11 @@ void split(Stack stack, void* value1,void* value2){
 	int newblock;
 	BF_GetBlockCounter(fileDesc,&newblock);
 	newblock--;	// last created block is te splited one
-	if(getKeysNumber(current) >= MAXKEYS) {
+	if(getKeysNumber(fileDesc,current) >= MAXKEYS) {
 		stack.push(current);
-		split(stack,&key,&newblock);
+		split(fileDesc,stack,&key,&newblock);
 	}
-	else insert(current,value1);
+	else insert(fileDesc,current,value1,&newblock);	// newblock >?>?> ===========
 
 
 	
