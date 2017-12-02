@@ -16,65 +16,6 @@ void AM_Init() {
 	return;
 }
 
-void insert(int fd, int block_num,void* p1,void* p2)	//filedesc, block_num(lets say current block), p1(key or value1), p2(pointer or value2)
-{
-	char type = getType(fd,block_num);
-
-	int l1 = get_l1(fd);
-	int l2 = get_l2(fd);
-
-	BF_Block *block;
-        BF_Block_Init(&block);
-        BF_GetBlock(fd,block_num,block);
-        char* data = BF_Block_GetData(block);
-
-        int offset = sizeof(char) + 2*sizeof(int);
-        void* temp = malloc(l1);                                       // value1 < temp
-        memcpy(temp,&data[offset],l1);
-	void *key,*pointer;
-	if(type == 'd'){
-		key = malloc(l1); 			  // l1 bytes for v1
- 		pointer = malloc(l2);                     // l2 bytes for v2
-
-        	for(int i = 0; i < sizeofdb; i++){
-                	if(cmp(get_t1(fd),l1,p1,temp) < 0){
-                        	memcpy(key,&data[offset],l1);                                  // take current key 
-                        	memcpy(pointer,&data[offset-sizeof(int)],l2);		       // and pointer
-
-                        	memcpy(&data[offset],p1,l1);                               	// write new key 
-                        	memcpy(&data[offset-sizeof(int)],p2,l2);		 	// and pointer (= block_number)
-
-                        	memcpy(p1,key,l1);                           	// iterate with new key 
-                        	memcpy(p2,pointer,l2);			 	// and pointer (= block_number)
-
-                	}
-                	offset += l1 + l2;
-        	}
-	}
-	else{
-		key = malloc(l1); 				   // l1 bytes for key (= sizeof(value1))
- 		pointer = malloc(sizeof(int));                     // 4 bytes for pointer
-
-		for(int i = 0; i < sizeofib; i++){
-                	if(cmp(t1,l1,p1,temp) < 0){
-                                  memcpy(key,&data[offset],l1);                                  // take current key 
-                                  memcpy(pointer,&data[offfset-sizeof(int)],sizeof(int));                 // and pointer
-  
-                                  memcpy(&data[offset],p1,l1);                                    // write new key 
-                                  memcpy(&data[offset-sizeof(int)],p2,sizeof(int));               // and pointer (= block_number)
-           
-                                  memcpy(p1,key,l1);                              // iterate with new key 
-                                  memcpy(p2,pointer,sizeof(int));                 // and pointer (= block_number)
-           
-                	}
-                        offset += l1 + sizeof(int);
-                }
-	}
-
-}
-
-
-
 void setKeysNumber(int fileDesc,int block_num,int new_num){
 	BF_Block *block;	// Init na min 3exasw
 	BF_GetBlock(fileDesc,block_num,block);
@@ -195,6 +136,109 @@ int getmax(int fd, int type)
     return (BF_BLOCK_SIZE - (sizeof(char) + 2*sizeof(int)))/(s1 + s2);
 }
 
+int operation(int op,char type,int l1, void *value1,void* value2){
+    switch(op) {
+        case 1:
+	    if(type == 'i') return *(int*)value1 == *(int*)value2;
+	    else if(type == 'f') return *(float*)value1 == *(float*)value2;
+	    else return !strncmp(value1,value2,l1);
+	    break;
+	case 2: 
+	    if(type == 'i') return *(int*)value1 != *(int*)value2;
+	    else if(type == 'f') return *(float*)value1 != *(float*)value2;
+	    else return strncmp(value1,value2,l1);
+	case 3:
+            if(type == 'i') return *(int*)value1 < *(int*)value2;
+            else if(type == 'f') return *(float*)value1 < *(float*)value2;
+            else return strncmp(value1,value2,l1) < 0;
+            break;
+        case 4:
+            if(type == 'i') return *(int*)value1 > *(int*)value2;
+            else if(type == 'f') return *(float*)value1 > *(float*)value2;
+            else return strncmp(value1,value2,l1) > 0;
+	case 5:
+	    if(type == 'i') return *(int*)value1 <= *(int*)value2;
+	    else if(type == 'f') return *(float*)value1 <= *(float*)value2;
+	    else return strncmp(value1,value2,l1) <= 0;
+	    break;
+	case 6:
+	    if(type == 'i') return *(int*)value1 >= *(int*)value2;
+	    else if(type == 'f') return *(float*)value1 >= *(float*)value2;
+	    else return strncmp(value1,value2,l1) >= 0;
+}
+
+char getType(int fileDesc, int blockNum){
+	BF_Block *block;
+	BF_GetBlock(fileDesc,blockNum,block);
+
+	char temp,*data;
+	data = BF_Block_GetData(block);
+
+	memcpy(&temp,data,sizeof(char));
+	return temp;
+}
+
+void insert(int fd, int block_num,void* p1,void* p2)	//filedesc, block_num(lets say current block), p1(key or value1), p2(pointer or value2)
+{
+	char type = getType(fd,block_num);
+
+	int l1 = get_l1(fd);
+	int l2 = get_l2(fd);
+
+	BF_Block *block;
+        BF_Block_Init(&block);
+        BF_GetBlock(fd,block_num,block);
+        char* data = BF_Block_GetData(block);
+
+	int offset = sizeof(char);
+	int curr_max;
+	memcpy(&curr_max,data[offset],sizeof(int));
+
+        offset += 2*sizeof(int);
+        void* temp = malloc(l1);                                       // value1 < temp
+        memcpy(temp,&data[offset],l1);
+	void *key,*pointer;
+
+	if(type == 'd'){
+		key = malloc(l1); 			  // l1 bytes for v1
+ 		pointer = malloc(l2);                     // l2 bytes for v2
+
+        	for(int i = 0; i < curr_max; i++){
+                	if(cmp(get_t1(fd),get_l1(fd),p1,temp) < 0){
+                        	memcpy(key,&data[offset],l1);                                  // take current key 
+                        	memcpy(pointer,&data[offset-sizeof(int)],l2);		       // and pointer
+
+                        	memcpy(&data[offset],p1,l1);                               	// write new key 
+                        	memcpy(&data[offset-sizeof(int)],p2,l2);		 	// and pointer (= block_number)
+
+                        	memcpy(p1,key,l1);                           	// iterate with new key 
+                        	memcpy(p2,pointer,l2);			 	// and pointer (= block_number)
+
+                	}
+                	offset += l1 + l2;
+        	}
+	}
+	else{
+		key = malloc(l1); 				   // l1 bytes for key (= sizeof(value1))
+ 		pointer = malloc(sizeof(int));                     // 4 bytes for pointer
+
+		for(int i = 0; i < curr_max; i++){
+                	if(cmp(get_t1(fd),get_l1(fd),p1,temp) < 0){
+                                  memcpy(key,&data[offset],l1);                                  // take current key 
+                                  memcpy(pointer,&data[offset-sizeof(int)],sizeof(int));                 // and pointer
+  
+                                  memcpy(&data[offset],p1,l1);                                    // write new key 
+                                  memcpy(&data[offset-sizeof(int)],p2,sizeof(int));               // and pointer (= block_number)
+           
+                                  memcpy(p1,key,l1);                              // iterate with new key 
+                                  memcpy(p2,pointer,sizeof(int));                 // and pointer (= block_number)
+           
+                	}
+                        offset += l1 + sizeof(int);
+                }
+	}
+
+}
 
 int AM_CreateIndex(char *fileName, 
 		char attrType1, 
@@ -310,17 +354,6 @@ int AM_CloseIndex (int fileDesc) {
 }
 
 //////////////////////////////////////////////////////////////////////////////////
-
-char getType(int fileDesc, int blockNum){
-	BF_Block *block;
-	BF_GetBlock(fileDesc,blockNum,block);
-
-	char temp,*data;
-	data = BF_Block_GetData(block);
-
-	memcpy(&temp,data,sizeof(char));
-	return temp;
-}
 
 int getKeysNumber(int fileDesc, int blockNum){
 	BF_Block *block;
@@ -484,13 +517,13 @@ void split(int fileDesc,Stack *stack, void* value1,void* value2){
 	int i,offset;
 	if(type == 'd') {
 		offset = sizeof(char) + 2*sizeof(int);	// ignore type,keys_num,sibling
-		l1 = get_l1();	// ====================
-		l2 = get_l2();
+		l1 = get_l1(fileDesc);	// ====================
+		l2 = get_l2(fileDesc);
 	}
 	else{
 	       offset = sizeof(char) + sizeof(int);
 	       l1 = sizeof(int);
-	       l2 = get_l1();
+	       l2 = get_l1(fileDesc);
 	}
 	
 	int flag = 0;
@@ -657,14 +690,14 @@ void split(int fileDesc,Stack *stack, void* value1,void* value2){
 		memcpy(&index,data,sizeof(char));
 		int offset = sizeof(char);
 		int seq = 0;
-		int l1 = get_l1():
-		char t1 = get_t1();
+		int l1 = get_l1(fileDesc);
+		char t1 = get_t1(fileDesc);
 		while(1){
 			if(offset + sizeof(int)  <= BF_BLOCK_SIZE){	// correct condition?
 				offset += sizeof(int); // ignore block_pointer and get the key
 				int key;
 				memcpy(&key,&data[offset],l1); // CASES!!
-				if(operation(op,t1,key,value) ) {
+				if(operation(op,t1,l1,key,value) ) {
 					if(index == 'k'){
 						offset -= sizeof(int);	// go back to block_pointer
 						memcpy(&root,&data[offset],sizeof(int));
@@ -711,7 +744,7 @@ void split(int fileDesc,Stack *stack, void* value1,void* value2){
 
 		int offset = sizeof(char) + sizeof(int)*2 + s->offset*(get_l1(s->fileDesc)+get_l2(s->fileDesc));
 
-		if(operation(s->op,get_t1(s->fileDesc),&data[offset],s->value)){	// na ftia3w to offset 
+		if(operation(s->op,get_t1(s->fileDesc),/*leipei to get l1*/,&data[offset],s->value)){	// na ftia3w to offset 
 			if(s->offset < getKeysNumber(s->fileDesc,s->blockNum)){
 				s->offset++;
 			}
@@ -750,5 +783,5 @@ void split(int fileDesc,Stack *stack, void* value1,void* value2){
 	}
 
 	void AM_Close() {
-
+		return;
 	}
