@@ -3,18 +3,165 @@
 #include <string.h>
 #include "bf.h"
 #include "StackInterface.h"
+#include <stdlib.h>
 struct scan *Scans[20];
 struct openedFiles *OpenFiles[20];
 
 int AM_errno = AME_OK;
 
-int sizeofr;	// size of record
-int sizeofb;	// number of entries the block can keep
 
 void AM_Init() {
 	BF_Init(LRU);
 	return;
 }
+
+int cmp(char t1, int l1, void* value1, void* temp)
+{
+	int n;
+	if(t1 == 'c'){
+		n = strncmp(value1,temp,l1);
+		return n;
+	}
+	else{
+		n = (*(int*)(value1) < *(int*)(temp));
+		//n = 10;
+		if(n == 1)
+			return -1;
+	}
+	return n;
+}
+
+char getType(int fileDesc, int blockNum);
+int cmp(char t1, int l1, void* value1, void* temp);
+
+void setKeysNumber(int fileDesc,int block_num,int new_num){
+	BF_Block *block;	// Init na min 3exasw
+	BF_Block_Init(&block);
+	BF_GetBlock(fileDesc,block_num,block);
+	char *data = BF_Block_GetData(block);
+	int offset = sizeof(char);
+
+	memcpy(&data[offset],&new_num,sizeof(int));
+	BF_Block_SetDirty(block);
+	BF_UnpinBlock(block);
+
+}
+
+void setRoot(int fileDesc,int new_root){
+	BF_Block *block;
+	BF_Block_Init(&block);
+	BF_GetBlock(fileDesc,0,block);
+	char *data = BF_Block_GetData(block);
+
+	int offset = strlen("B+Tree")+1+sizeof(int)*2 + sizeof(char)*2;
+
+	memcpy(&data[offset],&new_root,sizeof(int));
+	BF_Block_SetDirty(block);
+	BF_UnpinBlock(block);
+}
+
+int getRightSibling(int fileDesc, int block_num){
+	BF_Block *block;        // Init na min 3exasw
+	BF_Block_Init(&block);
+	BF_GetBlock(fileDesc,block_num,block);
+	char *data = BF_Block_GetData(block);
+	int offset = sizeof(char)+sizeof(int);
+	int sibling;
+	memcpy(&sibling,&data[offset],sizeof(int));
+	BF_UnpinBlock(block);
+	return sibling;
+}
+
+int get_l1(int fd)
+{
+	BF_Block *block;
+	BF_Block_Init(&block);
+	BF_GetBlock(fd,0,block);
+	char* data = BF_Block_GetData(block);
+
+	int offset = sizeof("B+Tree")+1 + sizeof(char);
+
+	int l1;
+	memcpy(&l1,&data[offset],sizeof(int));
+
+	BF_UnpinBlock(block);
+
+	return l1;
+}
+
+int get_l2(int fd)
+{
+	BF_Block *block;
+	BF_Block_Init(&block);
+	BF_GetBlock(fd,0,block);
+	char* data = BF_Block_GetData(block);
+
+	int offset = sizeof("B+Tree")+1 + 2*sizeof(char) + sizeof(int);
+
+	int l2;
+	memcpy(&l2,&data[offset],sizeof(int));
+
+	BF_UnpinBlock(block);
+
+	return l2;
+}
+
+char get_t1(int fd)
+{
+	BF_Block *block;
+	BF_Block_Init(&block);
+	BF_GetBlock(fd,0,block);
+	char* data = BF_Block_GetData(block);
+
+	int offset = sizeof("B+Tree")+1;
+
+	char t1;
+	memcpy(&t1,&data[offset],sizeof(char));
+
+	BF_UnpinBlock(block);
+
+	return t1;
+}
+
+
+char get_t2(int fd)
+{
+	BF_Block *block;
+	BF_Block_Init(&block);
+	BF_GetBlock(fd,0,block);
+	char* data = BF_Block_GetData(block);
+
+	int offset = sizeof("B+Tree")+1 + sizeof(char) + sizeof(int);
+
+	char t2;
+	memcpy(&t2,&data[offset],sizeof(char));
+
+	BF_UnpinBlock(block);
+
+	return t2;
+}
+
+int getmax(int fd, int type)
+{
+	BF_Block *block;
+	BF_Block_Init(&block);
+	BF_GetBlock(fd,0,block);
+	char* data = BF_Block_GetData(block);
+
+	int s1, s2;
+
+	if(type == 0){	// index
+		s1 = get_l1(fd);
+		s2 = sizeof(int);
+	}
+	else{		// data
+		s1 = get_l1(fd);
+		s2 = get_l2(fd);
+	}
+	BF_UnpinBlock(block);
+	return (BF_BLOCK_SIZE - (sizeof(char) + 2*sizeof(int)))/(s1 + s2);
+}
+
 
 void insert(int fd, int block_num,void* p1,void* p2)	//filedesc, block_num(lets say current block), p1(key or value1), p2(pointer or value2)
 {
@@ -24,176 +171,64 @@ void insert(int fd, int block_num,void* p1,void* p2)	//filedesc, block_num(lets 
 	int l2 = get_l2(fd);
 
 	BF_Block *block;
-        BF_Block_Init(&block);
-        BF_GetBlock(fd,block_num,block);
-        char* data = BF_Block_GetData(block);
+	BF_Block_Init(&block);
+	BF_GetBlock(fd,block_num,block);
+	char* data = BF_Block_GetData(block);
 
-        int offset = sizeof(char) + 2*sizeof(int);
-        void* temp = malloc(l1);                                       // value1 < temp
-        memcpy(temp,&data[offset],l1);
+	int offset = sizeof(char);
+	int curr_max;
+	memcpy(&curr_max,&data[offset],sizeof(int));
+
+	offset += 2*sizeof(int);
+	void* temp = malloc(l1);                                       // value1 < temp
+	memcpy(temp,&data[offset],l1);
 	void *key,*pointer;
+
 	if(type == 'd'){
 		key = malloc(l1); 			  // l1 bytes for v1
- 		pointer = malloc(l2);                     // l2 bytes for v2
+		pointer = malloc(l2);                     // l2 bytes for v2
 
-        	for(int i = 0; i < sizeofdb; i++){
-                	if(cmp(get_t1(fd),l1,p1,temp) < 0){
-                        	memcpy(key,&data[offset],l1);                                  // take current key 
-                        	memcpy(pointer,&data[offset-sizeof(int)],l2);		       // and pointer
+		for(int i = 0; i < curr_max; i++){
+			if(cmp(get_t1(fd),get_l1(fd),p1,temp) < 0){
+				memcpy(key,&data[offset],l1);                                  // take current key 
+				memcpy(pointer,&data[offset-sizeof(int)],l2);		       // and pointer
 
-                        	memcpy(&data[offset],p1,l1);                               	// write new key 
-                        	memcpy(&data[offset-sizeof(int)],p2,l2);		 	// and pointer (= block_number)
+				memcpy(&data[offset],p1,l1);                               	// write new key 
+				memcpy(&data[offset-sizeof(int)],p2,l2);		 	// and pointer (= block_number)
 
-                        	memcpy(p1,key,l1);                           	// iterate with new key 
-                        	memcpy(p2,pointer,l2);			 	// and pointer (= block_number)
+				memcpy(p1,key,l1);                           	// iterate with new key 
+				memcpy(p2,pointer,l2);			 	// and pointer (= block_number)
 
-                	}
-                	offset += l1 + l2;
-        	}
+			}
+			offset += l1 + l2;
+		}
 	}
 	else{
 		key = malloc(l1); 				   // l1 bytes for key (= sizeof(value1))
- 		pointer = malloc(sizeof(int));                     // 4 bytes for pointer
+		pointer = malloc(sizeof(int));                     // 4 bytes for pointer
 
-		for(int i = 0; i < sizeofib; i++){
-                	if(cmp(t1,l1,p1,temp) < 0){
-                                  memcpy(key,&data[offset],l1);                                  // take current key 
-                                  memcpy(pointer,&data[offfset-sizeof(int)],sizeof(int));                 // and pointer
-  
-                                  memcpy(&data[offset],p1,l1);                                    // write new key 
-                                  memcpy(&data[offset-sizeof(int)],p2,sizeof(int));               // and pointer (= block_number)
-           
-                                  memcpy(p1,key,l1);                              // iterate with new key 
-                                  memcpy(p2,pointer,sizeof(int));                 // and pointer (= block_number)
-           
-                	}
-                        offset += l1 + sizeof(int);
-                }
+		for(int i = 0; i < curr_max; i++){
+			if(cmp(get_t1(fd),get_l1(fd),p1,temp) < 0){
+				memcpy(key,&data[offset],l1);                                  // take current key 
+				memcpy(pointer,&data[offset-sizeof(int)],sizeof(int));                 // and pointer
+
+				memcpy(&data[offset],p1,l1);                                    // write new key 
+				memcpy(&data[offset-sizeof(int)],p2,sizeof(int));               // and pointer (= block_number)
+
+				memcpy(p1,key,l1);                              // iterate with new key 
+				memcpy(p2,pointer,sizeof(int));                 // and pointer (= block_number)
+
+			}
+			offset += l1 + sizeof(int);
+		}
 	}
+	BF_Block_SetDirty(block);
+	BF_UnpinBlock(block);
 
 }
 
 
 
-void setKeysNumber(int fileDesc,int block_num,int new_num){
-	BF_Block *block;	// Init na min 3exasw
-	BF_GetBlock(fileDesc,block_num,block);
-	char *data = BF_Block_GetData(block);
-	int offset = sizeof(char);
-	
-	memcpy(&data[offset],&new_num,sizeof(int));
-
-}
-
-void setRoot(int fileDesc,int new_root){
-	BF_Block *block;
-	BF_GetBlock(fileDesc,0,block);
-	char *data = BF_Block_GetData(block);
-
-	int offset = strlen("B+Tree")+1+sizeof(int)*2 + sizeof(char)*2;
-
-	memcpy(&data[offset],&new_root,sizeof(int));
-}
-
-int getRightSibling(int fileDesc, int block_num){
-	BF_Block *block;        // Init na min 3exasw
-	BF_GetBlock(fileDesc,block_num,block);
-	char *data = BF_Block_GetData(block);
-	int offset = sizeof(char)+sizeof(int);
-	int sibling;
-	memcpy(&sibling,&data[offset],sizeof(int));
-	return sibling;
-}
-
-int get_l1(int fd)
-{
-    BF_Block *block;
-    BF_Block_Init(&block);
-    BF_GetBlock(fd,0,block);
-    char* data = BF_Block_GetData(block);
-
-    int offset = sizeof("B+Tree")+1 + sizeof(char);
-
-    int l1;
-    memcpy(&l1,&data[offset],sizeof(int));
-
-    BF_UnpinBlock(block);
-
-    return l1;
-}
-
-int get_l2(int fd)
-{
-    BF_Block *block;
-    BF_Block_Init(&block);
-    BF_GetBlock(fd,0,block);
-    char* data = BF_Block_GetData(block);
-
-    int offset = sizeof("B+Tree")+1 + 2*sizeof(char) + sizeof(int);
-
-    int l2;
-    memcpy(&l2,&data[offset],sizeof(int));
-
-    BF_UnpinBlock(block);
-
-    return l2;
- }
-
-char get_t1(int fd)
-{
-    BF_Block *block;
-    BF_Block_Init(&block);
-    BF_GetBlock(fd,0,block);
-    char* data = BF_Block_GetData(block);
-
-    int offset = sizeof("B+Tree")+1;
- 
-    char t1;
-    memcpy(&t1,&data[offset],sizeof(char));
- 
-    BF_UnpinBlock(block);
- 
-    return t1;
-}
- 
-
-char get_t2(int fd)
-{
-    BF_Block *block;
-    BF_Block_Init(&block);
-    BF_GetBlock(fd,0,block);
-    char* data = BF_Block_GetData(block);
-
-    int offset = sizeof("B+Tree")+1 + sizeof(char) + sizeof(int);
-
-    char t2;
-    memcpy(&t2,&data[offset],sizeof(char));
-
-    BF_UnpinBlock(block);
-
-   return t2;
-}
-
-int getmax(int fd, int type)
-{
-    BF_Block *block;
-    BF_Block_Init(&block);
-    BF_GetBlock(fd,0,block);
-    char* data = BF_Block_GetData(block);
-
-    int s1, s2;
-
-    if(type == 0){	// index
-	s1 = get_l1(fd);
-	s2 = sizeof(int);
-    }
-    else{		// data
-	s1 = get_l1(fd);
-	s2 = get_l2(fd);
-    }
-
-    return (BF_BLOCK_SIZE - (sizeof(char) + 2*sizeof(int)))/(s1 + s2);
-}
 
 
 int AM_CreateIndex(char *fileName, 
@@ -226,8 +261,6 @@ int AM_CreateIndex(char *fileName,
 	memcpy(&(data[offset]),&attrLength2,sizeof(int));
 	offset += sizeof(int);
 
-	sizeofr = attrLength1 + attrLength2;
-	sizeofb = (BF_BLOCK_SIZE - sizeof(char) - 2*sizeof(int))/sizeofr;
 
 	/* All four fields written on block 0 */
 
@@ -241,14 +274,14 @@ int AM_CreateIndex(char *fileName,
 
 int AM_DestroyIndex(char *fileName) {
 	for(int i = 0; i < 20; i++){
-	if(OpenFiles[i] != NULL){
-	if(!strcmp(fileName,OpenFiles[i]->fileName)){  //if opened and found
-	    remove(fileName);
-    	}
-}
-	break;
-    }
-    return AME_OK;
+		if(OpenFiles[i] != NULL){
+			if(!strcmp(fileName,OpenFiles[i]->fileName)){  //if opened and found
+				remove(fileName);
+			}
+		}
+		break;
+	}
+	return AME_OK;
 }
 
 
@@ -264,6 +297,7 @@ int AM_OpenIndex (char *fileName) {
 	if(strcmp(str,"B+Tree")) return -2;
 	struct openedFiles *opFiles = malloc(sizeof(struct openedFiles));
 	opFiles->fileName = fileName;
+	opFiles->bf_fd = *fileDesc;
 
 	int offset = strlen("B+Tree")+1;
 	int Length1,Length2;
@@ -278,34 +312,30 @@ int AM_OpenIndex (char *fileName) {
 	offset += sizeof(char);
 
 	memcpy(&Length2,&(data[offset]),sizeof(int));
-
-	for(int i=0;i<20;i++){
-		if (OpenFiles[i] == NULL) OpenFiles[i] = opFiles;
+	int i;
+	for( i=0;i<20;i++){
+		if (OpenFiles[i] == NULL) {
+			OpenFiles[i] = opFiles;
+			break;
+		}
 	}
 	BF_UnpinBlock(block);
 	BF_Block_Destroy(&block);
-	return AME_OK;
+	return i;
 }
 
 
 int AM_CloseIndex (int fileDesc) {
 	int i;
 	for( i=0;i<20;i++){
-		if(OpenFiles[i] != NULL){
-			if(OpenFiles[i]->fileDesc == fileDesc) break;
+		if(Scans[i] != NULL){
+			if(Scans[i]->fileDesc == fileDesc) break;
 		}
 	}
-	if(i>=20){  // if no scans running
-		for(int j=0;j<20;j++){
-			if(OpenFiles[j] != NULL){
-				if(OpenFiles[j]->fileDesc == fileDesc){
-					free(OpenFiles[j]);
-					OpenFiles[j] = NULL;
-					return AME_OK;
-				}
-			}
-		}
-//		return AME_OK;
+	if(i>=20) {
+		BF_CloseFile(OpenFiles[fileDesc]->bf_fd);
+		free(OpenFiles[fileDesc]);
+		OpenFiles[fileDesc] = NULL;
 	}
 }
 
@@ -313,17 +343,20 @@ int AM_CloseIndex (int fileDesc) {
 
 char getType(int fileDesc, int blockNum){
 	BF_Block *block;
+	BF_Block_Init(&block);
 	BF_GetBlock(fileDesc,blockNum,block);
 
 	char temp,*data;
 	data = BF_Block_GetData(block);
 
 	memcpy(&temp,data,sizeof(char));
+	BF_UnpinBlock(block);
 	return temp;
 }
 
 int getKeysNumber(int fileDesc, int blockNum){
 	BF_Block *block;
+	BF_Block_Init(&block);
 	BF_GetBlock(fileDesc,blockNum,block);
 
 	int number;
@@ -331,43 +364,30 @@ int getKeysNumber(int fileDesc, int blockNum){
 	data = BF_Block_GetData(block);
 
 	memcpy(&number,&data[sizeof(char)],sizeof(int));
+	BF_UnpinBlock(block);
 	return number;
 }
 
 int getRoot(int fileDesc){
 	BF_Block *block;
+	BF_Block_Init(&block);
 	BF_GetBlock(fileDesc,0,block);
-	
+
 	int root;
 	char *data;
 	data = BF_Block_GetData(block);
-	
+
 	int offset = strlen("B+Tree")+1 +2*sizeof(int) + 2*sizeof(char);
 	memcpy(&root,&data[offset],sizeof(int));
-
+	BF_UnpinBlock(block);
 	return root;
 }
 
+void split(int fileDesc,Stack *stack, void* value1,void* value2);
 
-	int cmp(char t1, int l1, void* value1, void* temp)
-	{
-		int n;
-		if(t1 == 'c'){
-			n = strncmp(value1,temp,l1);
-			return n;
-		}
-		else{
-			n = (*(int*)(value1) < *(int*)(temp));
-			//n = 10;
-			if(n == 1)
-				return -1;
-		}
-		return n;
-	}
+int AM_InsertEntry(int fileDesc, void *value1, void *value2) {
 
-	int AM_InsertEntry(int fileDesc, void *value1, void *value2) {
-
-		int blocks_num,offset;
+	int blocks_num,offset;
 	BF_Block *block;
 	BF_Block_Init(&block);
 	BF_GetBlock(fileDesc, 0, block);
@@ -392,6 +412,7 @@ int getRoot(int fileDesc){
 
 	BF_GetBlockCounter(fileDesc,&blocks_num);
 	int temp;
+	BF_UnpinBlock(block);
 	if(blocks_num == 1) {
 		BF_AllocateBlock(fileDesc,block); 
 		memcpy(&data[offset],&blocks_num,sizeof(int)); // make it root
@@ -414,6 +435,7 @@ int getRoot(int fileDesc){
 		offset += l2;
 
 		BF_Block_SetDirty(block);
+		BF_UnpinBlock(block);
 	}
 	else {
 		temp = getRoot(fileDesc);
@@ -462,46 +484,59 @@ int getRoot(int fileDesc){
 					i++;
 					// create insert_and_sort() 
 					memcpy(&data[sizeof(char)],&i,sizeof(int));	// increase keysnumber
+					BF_Block_SetDirty(block);
+					BF_UnpinBlock(block);
+					break;
 				}
 				else {
 					Push(temp,&s);
 					split(fileDesc,&s,value1,value2);
 				}
 			}
+			BF_Block_SetDirty(block);		// swsto? ===================
+			BF_UnpinBlock(block);
+
 		}
 	}
-
+	return AME_OK;
+}
 
 void split(int fileDesc,Stack *stack, void* value1,void* value2){
 	int current;
 	Pop(stack,&current);
+	BF_Block *block;
+	BF_Block_Init(&block);
 	BF_GetBlock(fileDesc, current, block);
 	char* data = BF_Block_GetData(block);
 	char type;
 	void *upkey;
-
+	int l1,l2;
+	char t1,t2;
 	memcpy(&type,data,sizeof(char));	// block type
 	int i,offset;
 	if(type == 'd') {
 		offset = sizeof(char) + 2*sizeof(int);	// ignore type,keys_num,sibling
-		l1 = get_l1();	// ====================
-		l2 = get_l2();
+		l1 = get_l1(fileDesc);	// ====================
+		l2 = get_l2(fileDesc);
 	}
 	else{
-	       offset = sizeof(char) + sizeof(int);
-	       l1 = sizeof(int);
-	       l2 = get_l1();
+		offset = sizeof(char) + sizeof(int);
+		l1 = sizeof(int);
+		l2 = get_l1(fileDesc);
 	}
-	
+
 	int flag = 0;
-	char *key,*value,*tempkey,*tempvalue;
+	int *key,*value,*tempkey,*tempvalue;
 	key = malloc(l1);
 	tempkey = malloc(l1);
 	value = malloc(l2);
 	tempvalue = malloc(l2);
-
+	//if(offset + l1 > BF_BLOCK_SIZE) return;
 	for(i=0;i<=(getKeysNumber(fileDesc,current)-1)/2;i++)	{	// ================   condition?? =================
+		if(offset + l1 > BF_BLOCK_SIZE) return;
+
 		memcpy(key,&data[offset],l1);
+
 		offset += l1;
 		memcpy(value,&data[offset],l2);
 		offset += l2;
@@ -541,7 +576,8 @@ void split(int fileDesc,Stack *stack, void* value1,void* value2){
 	setKeysNumber(fileDesc,current,i);
 
 	int offset1 = offset;
-	
+	BF_Block_SetDirty(block);
+		BF_UnpinBlock(block);		// kanw unpin? ===================
 	BF_AllocateBlock(fileDesc,block);		// pote allazw current ????
 	char* data2 = BF_Block_GetData(block);
 
@@ -555,19 +591,19 @@ void split(int fileDesc,Stack *stack, void* value1,void* value2){
 	memcpy(&data2[offset],&number,sizeof(int));
 	offset += sizeof(int);
 	if(type == 'd'){	
-	number = getRightSibling(fileDesc,current);
-	
-	memcpy(&data2[offset],&number,sizeof(int));
-	offset += sizeof(int);
+		number = getRightSibling(fileDesc,current);
 
-	memcpy(&data[sizeof(char)+sizeof(int)],&blocks_num,sizeof(int)); // change sibling
+		memcpy(&data2[offset],&number,sizeof(int));
+		offset += sizeof(int);
+
+		memcpy(&data[sizeof(char)+sizeof(int)],&blocks_num,sizeof(int)); // change sibling
 	}
 	if(type == 'd'){
-	memcpy(&data2[offset],key,l1);			// ============================== mallon den xreizetai auto giati to key anebainei================================
-	offset += l1;
+		memcpy(&data2[offset],key,l1);			// ============================== mallon den xreizetai auto giati to key anebainei================================
+		offset += l1;
 
-	memcpy(&data2[offset],value,l2);
-	offset += l2;
+		memcpy(&data2[offset],value,l2);
+		offset += l2;
 	}
 
 	for(i=(getKeysNumber(fileDesc,current)+1)/2;i<getKeysNumber(fileDesc,current);i++){  
@@ -588,6 +624,8 @@ void split(int fileDesc,Stack *stack, void* value1,void* value2){
 		offset1 += l2;
 	}
 	if(current == getRoot(fileDesc)) {
+		BF_Block_SetDirty(block);
+			BF_UnpinBlock(block);	// ===============================
 		BF_AllocateBlock(fileDesc,block);
 		data = BF_Block_GetData(block);
 		type = 'k';
@@ -602,10 +640,13 @@ void split(int fileDesc,Stack *stack, void* value1,void* value2){
 		insert(fileDesc,--blocks_num,&key,&blocks_num);		// =============== right values? ==============
 
 		setRoot(fileDesc,blocks_num);
-		return AME_OK;
+		BF_Block_SetDirty(block);
+			BF_UnpinBlock(block); // ==============================
+
+		return  ;//AME_OK;
 	}
 
-//	current=stack.pop();
+	//	current=stack.pop();
 	Pop(stack,&current);
 	int newblock;
 	BF_GetBlockCounter(fileDesc,&newblock);
@@ -618,137 +659,156 @@ void split(int fileDesc,Stack *stack, void* value1,void* value2){
 		split(fileDesc,stack,&key,&newblock);
 	}
 	else insert(fileDesc,current,value1,&newblock);	// newblock >?>?> ===========
+	BF_Block_SetDirty(block);
+		BF_UnpinBlock(block);
 
 
-	
+
+}
+
+int operation(int op,char type,int l1, void *value1,void* value2){
+	switch(op) {
+		case 1:
+			if(type == 'i') return *(int*)value1 == *(int*)value2;
+			else if(type == 'f') return *(float*)value1 == *(float*)value2;
+			else return !strncmp(value1,value2,l1);
+			break;
+		case 2: 
+			if(type == 'i') return *(int*)value1 != *(int*)value2;
+			else if(type == 'f') return *(float*)value1 != *(float*)value2;
+			else return strncmp(value1,value2,l1);
+		case 3:
+			if(type == 'i') return *(int*)value1 < *(int*)value2;
+			else if(type == 'f') return *(float*)value1 < *(float*)value2;
+			else return strncmp(value1,value2,l1) < 0;
+			break;
+		case 4:
+			if(type == 'i') return *(int*)value1 > *(int*)value2;
+			else if(type == 'f') return *(float*)value1 > *(float*)value2;
+			else return strncmp(value1,value2,l1) > 0;
+		case 5:
+			if(type == 'i') return *(int*)value1 <= *(int*)value2;
+			else if(type == 'f') return *(float*)value1 <= *(float*)value2;
+			else return strncmp(value1,value2,l1) <= 0;
+			break;
+		case 6:
+			if(type == 'i') return *(int*)value1 >= *(int*)value2;
+			else if(type == 'f') return *(float*)value1 >= *(float*)value2;
+			else return strncmp(value1,value2,l1) >= 0;
+	}
+}
+int AM_OpenIndexScan(int fileDesc, int op, void *value) {
+	Scan *s = malloc(sizeof(Scan));
+	s->fileDesc = fileDesc;
+	s->op = op;
+	s->value = value;
+	s->offset = 0;
+
+	BF_Block *block;
+	BF_Block_Init(&block);
+	BF_GetBlock(fileDesc,0,block);
+	char *data = BF_Block_GetData(block);
+	int index2 = strlen("B+Tree")+1+2*sizeof(char) + 2*sizeof(int);
+	int root;
+	memcpy(&root,&data[index2],sizeof(int));
+	BF_GetBlock(fileDesc,root,block);
+	data = BF_Block_GetData(block);
+	char index;
+	memcpy(&index,data,sizeof(char));
+	int offset = sizeof(char);
+	int seq = 0;
+	int l1 = get_l1(fileDesc);
+	char t1 = get_t1(fileDesc);
+	while(1){
+		if(offset + sizeof(int)  <= BF_BLOCK_SIZE){	// correct condition?
+			offset += sizeof(int); // ignore block_pointer and get the key
+			int key;
+			memcpy(&key,&data[offset],l1); // CASES!!
+			if(operation(op,t1,l1,&key,value) ) {
+				if(index == 'k'){
+					offset -= sizeof(int);	// go back to block_pointer
+					memcpy(&root,&data[offset],sizeof(int));
+					BF_GetBlock(fileDesc,root,block);
+					data = BF_Block_GetData(block);
+					memcpy(&index,data,sizeof(char));
+					offset = sizeof(char);
+					seq = 0;
+					continue;
+				}
+				else {
+					s->blockNum = root;
+					s->offset = seq;
+					break;
+				}
+			}
+			else {
+				offset += l1;
+				seq++;
+			}
+		}
+		else return -1;
+	}
+	int scanDesc=0;
+	while(Scans[scanDesc] != NULL) scanDesc++;
+	Scans[scanDesc] = s;
+//	BF_Block_SetDirty(block);
+		BF_UnpinBlock(block);
+	return scanDesc;
 }
 
 
-	int operation(int op,char type,int l1, void *value1,void* value2){
-		switch(op) {
-			case 1:
-				if(type == 'i') return *(int*)value1 == *(int*)value2;
-				else if(type == 'f') return *(float*)value1 == *(float*)value2;
-				else return !strncmp(value1,value2,l1);
-				break;
-			case 2: 
-				if(type == 'i') return *(int*)value1 != *(int*)value2;
-				else if(type == 'f') return *(float*)value1 != *(float*)value2;
-				else return strncmp(value1,value2,l1);
+void *AM_FindNextEntry(int scanDesc) {
+	Scan *s;// = Scans[scanDesc];
+	/*for(int i=0;i<20;i++)
+	  if(Scans[i] != NULL)
+	  if(Scans[i]->scanDesc == scanDesc)
+	  s = Scans[i];
+	  */
+	s = Scans[scanDesc];
+	BF_Block *block;
+	BF_Block_Init(&block);
+	BF_GetBlock(s->fileDesc,s->blockNum,block);
+	char *data = BF_Block_GetData(block);
+
+	int offset = sizeof(char) + sizeof(int)*2 + s->offset*(get_l1(s->fileDesc)+get_l2(s->fileDesc));
+
+	if(operation(s->op,get_t1(s->fileDesc),get_l1(s->fileDesc),&data[offset],s->value)){	// na ftia3w to offset 
+		if(s->offset < getKeysNumber(s->fileDesc,s->blockNum)){
+			s->offset++;
 		}
-	}	
-	int AM_OpenIndexScan(int fileDesc, int op, void *value) {
-		Scan *s = malloc(sizeof(Scan));
-		s->fileDesc = fileDesc;
-		s->op = op;
-		s->value = value;
-		s->offset = 0;
-
-		BF_Block *block;
-		BF_Block_Init(&block);
-		BF_GetBlock(fileDesc,0,block);
-		char *data = BF_Block_GetData(block);
-		int index2 = strlen("B+Tree")+1+2*sizeof(char) + 2*sizeof(int);
-		int root;
-		memcpy(&root,&data[index2],sizeof(int));
-		BF_GetBlock(fileDesc,root,block);
-		data = BF_Block_GetData(block);
-		char index;
-		memcpy(&index,data,sizeof(char));
-		int offset = sizeof(char);
-		int seq = 0;
-		int l1 = get_l1():
-		char t1 = get_t1();
-		while(1){
-			if(offset + sizeof(int)  <= BF_BLOCK_SIZE){	// correct condition?
-				offset += sizeof(int); // ignore block_pointer and get the key
-				int key;
-				memcpy(&key,&data[offset],l1); // CASES!!
-				if(operation(op,t1,key,value) ) {
-					if(index == 'k'){
-						offset -= sizeof(int);	// go back to block_pointer
-						memcpy(&root,&data[offset],sizeof(int));
-						BF_GetBlock(fileDesc,root,block);
-						data = BF_Block_GetData(block);
-						memcpy(&index,data,sizeof(char));
-						offset = sizeof(char);
-						seq = 0;
-						continue;
-					}
-					else {
-						s->blockNum = root;
-						s->offset = seq;
-						break;
-					}
-				}
-				else {
-					offset += l1;
-					seq++;
-				}
-
-			}
-			else return -1;
+		else {
+			s->offset = 0;
+			s->blockNum = getRightSibling(s->fileDesc,s->blockNum);
 		}
-
-
-		int scanDesc=0;
-		while(Scans[scanDesc] != NULL) scanDesc++;
-		Scans[scanDesc] = s;
-		return scanDesc;
+//		BF_Block_SetDirty(block);
+			BF_UnpinBlock(block);
+		return &data[s->offset*sizeof(int)];
 	}
+//	BF_Block_SetDirty(block);
+		BF_UnpinBlock(block);
+	return NULL;
 
 
-	void *AM_FindNextEntry(int scanDesc) {
-		Scan *s;// = Scans[scanDesc];
-		for(int i=0;i<20;i++)
-			if(Scans[i] != NULL)
-				if(Scans[i]->scanDesc == scanDesc)
-					s = Scans[i];
-
-		BF_Block *block;
-		BF_GetBlock(s->fileDesc,s->blockNum,block);
-		char *data = BF_Block_GetData(block);
-
-		int offset = sizeof(char) + sizeof(int)*2 + s->offset*(get_l1(s->fileDesc)+get_l2(s->fileDesc));
-
-		if(operation(s->op,get_t1(s->fileDesc),&data[offset],s->value)){	// na ftia3w to offset 
-			if(s->offset < getKeysNumber(s->fileDesc,s->blockNum)){
-				s->offset++;
-			}
-			else {
-				s->offset = 0;
-				s->blockNum = getRightSibling(s->fileDesc,s->blockNum);
-			}
-
-			return &data[s->offset*sizeof(int)];
-		}
-		return NULL;
+}
 
 
-	}
+int AM_CloseIndexScan(int scanDesc) {
+	free(Scans[scanDesc]);
+	Scans[scanDesc]=NULL;
+	return AME_OK;
+}
 
 
-	int AM_CloseIndexScan(int scanDesc) {
-		for(int i=0;i<20;i++){
-			if(Scans[i] != NULL){
-				if(Scans[i]->scanDesc == scanDesc){
-					free(Scans[i]);
-					Scans[i]=NULL;
-				}
-			}
-		}
-		return AME_OK;
-	}
+void AM_PrintError(char *errString) {
+	printf("%s\n",errString);	/* Hash table for errors must be implemented */
+	//char str[20] = hash(AM_errno);
+	//printf("%s\n",str);
 
 
-	void AM_PrintError(char *errString) {
-		printf("%s\n",errString);	/* Hash table for errors must be implemented */
-		//char str[20] = hash(AM_errno);
-		//printf("%s\n",str);
+}
 
+void AM_Close() {
+	return;
 
-	}
+}
 
-	void AM_Close() {
-
-	}

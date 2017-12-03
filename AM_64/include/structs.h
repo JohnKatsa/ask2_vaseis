@@ -12,6 +12,7 @@ struct scan {
 typedef struct scan Scan;
 
 struct openedFiles {
+	int bf_fd;
 	char *fileName;
 	int attrLength1;
 	char attrType1;
